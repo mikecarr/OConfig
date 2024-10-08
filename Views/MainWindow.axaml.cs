@@ -30,7 +30,7 @@ public partial class MainWindow : Window
 
         // Set a fixed height
         this.Height = 600; // or whatever height is appropriate for your design
-        
+
         this.WindowState = WindowState.Normal; // Ensure the window is normal
         this.Activate(); // Activate the window
         this.Topmost = true; // Keep the window in front
@@ -71,30 +71,102 @@ public partial class MainWindow : Window
     }
 
     // When the Connect button is clicked
-    private void OnConnectClick(object? sender, RoutedEventArgs e)
+    private async void OnConnectClick(object? sender, RoutedEventArgs e)
     {
         Logger.Instance.Log("Attempting to connect...");
 
+        // Retrieve the values from the text boxes
+        _appConfig.Username = UsernameTextBox.Text;
+        _appConfig.Password = PasswordTextBox.Text;
+        _appConfig.IPAddress = IPAddressTextBox.Text;
+
         if (CameraRadioButton.IsChecked == true)
         {
-            // Retrieve the values from the text boxes
-            _appConfig.Username = UsernameTextBox.Text;
-            _appConfig.Password = PasswordTextBox.Text;
-            _appConfig.IPAddress = IPAddressTextBox.Text;
             _appConfig.DeviceType = MainWindowViewModel.DeviceType.Camera;
+        }
+        else if (RadxaRadioButton.IsChecked == true)
+        {
+            _appConfig.DeviceType = MainWindowViewModel.DeviceType.Radxa;
+        }
 
-            // Save the configuration
-            _appConfig.Save();
+        // Save the configuration
+        _appConfig.Save();
 
-            string username = _appConfig.Username;
-            string password = _appConfig.Password;
-            string ipAddress = _appConfig.IPAddress;
-            string deviceType = _appConfig.DeviceType.ToString();
+        string username = _appConfig.Username;
+        string password = _appConfig.Password;
+        string ipAddress = _appConfig.IPAddress;
 
-            // SSH and file retrieval in a background thread to avoid freezing the UI
-            Task.Run(() => ConnectAndReadFiles(username, password, ipAddress));
+        await ConnectAndReadFilesAsync(username, password, ipAddress);
+    
+    }
+
+    private async Task ConnectAndReadFilesAsync(string username, string password, string ipAddress)
+    {
+        using (var client = new SshClient(ipAddress, username, password))
+        {
+            try
+            {
+                client.Connect();
+                Logger.Instance.Log("SSH Connected");
+
+                // List of files to read
+                string[] filesToRead = new []{""};
+                if (CameraRadioButton.IsChecked == true)
+                {
+                    filesToRead = new[] { "/etc/wfb.conf", "/etc/majestic.yaml", "/etc/telemetry.conf" };
+                }
+                else if (RadxaRadioButton.IsChecked == true)
+                {
+                    filesToRead = new[]
+                    {
+                        "/config/stream.sh" ,
+                        "/config/autoload-wfb-nics.sh",
+                        "/config/rec-fps",
+                        "/config/screen-mode"
+                    };
+                }
+
+                foreach (var filePath in filesToRead)
+                {
+                    // Run the command to get file contents
+                    Logger.Instance.Log("Reading " + filePath);
+                    var command = await Task.Run(() => client.RunCommand($"cat {filePath}"));
+                    var fileContent = command.Result;
+
+                    // Switch to the UI thread to add the tab
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        // Based on the file extension, parse and display
+                        if (filePath.EndsWith(".yaml") || filePath.EndsWith(".yml"))
+                        {
+                            var yamlParsed = ParseYaml(fileContent);
+                            AddFileTab(filePath, yamlParsed);
+                        }
+                        else if (filePath.EndsWith(".json"))
+                        {
+                            var jsonParsed = ParseJson(fileContent);
+                            AddFileTab(filePath, jsonParsed);
+                        }
+                        else
+                        {
+                            // Handle other formats as plain text
+                            AddFileTab(filePath, fileContent);
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => { Logger.Instance.Log($"SSH Error: {ex.Message}"); });
+            }
+            finally
+            {
+                client.Disconnect();
+                Logger.Instance.Log("SSH Disconnected");
+            }
         }
     }
+
 
     private void ConnectAndReadFiles(string username, string password, string ipAddress)
     {
@@ -114,27 +186,31 @@ public partial class MainWindow : Window
                     var command = client.RunCommand($"cat {filePath}");
                     var fileContent = command.Result;
 
-                    // Based on the file extension, parse and display
-                    if (filePath.EndsWith(".yaml") || filePath.EndsWith(".yml"))
+                    // Switch to the UI thread to add the tab
+                    Dispatcher.UIThread.InvokeAsync(() =>
                     {
-                        var yamlParsed = ParseYaml(fileContent);
-                        Dispatcher.UIThread.InvokeAsync(() => AddFileTab(filePath, yamlParsed));
-                    }
-                    else if (filePath.EndsWith(".json"))
-                    {
-                        var jsonParsed = ParseJson(fileContent);
-                        Dispatcher.UIThread.InvokeAsync(() => AddFileTab(filePath, jsonParsed));
-                    }
-                    else
-                    {
-                        // Handle other formats as plain text
-                        Dispatcher.UIThread.InvokeAsync(() => AddFileTab(filePath, fileContent));
-                    }
+                        // Based on the file extension, parse and display
+                        if (filePath.EndsWith(".yaml") || filePath.EndsWith(".yml"))
+                        {
+                            var yamlParsed = ParseYaml(fileContent);
+                            AddFileTab(filePath, yamlParsed);
+                        }
+                        else if (filePath.EndsWith(".json"))
+                        {
+                            var jsonParsed = ParseJson(fileContent);
+                            AddFileTab(filePath, jsonParsed);
+                        }
+                        else
+                        {
+                            // Handle other formats as plain text
+                            AddFileTab(filePath, fileContent);
+                        }
+                    });
                 }
             }
             catch (Exception ex)
             {
-                Logger.Instance.Log($"SSH Error: {ex.Message}");
+                Dispatcher.UIThread.InvokeAsync(() => { Logger.Instance.Log($"SSH Error: {ex.Message}"); });
             }
             finally
             {
@@ -143,6 +219,7 @@ public partial class MainWindow : Window
             }
         }
     }
+
 
     // Parse YAML using YamlDotNet
     private Dictionary<string, object> ParseYaml(string fileContent)
@@ -158,100 +235,99 @@ public partial class MainWindow : Window
     }
 
     public void AddFileTab(string filePath, object fileContent)
-{
-    string fileName = System.IO.Path.GetFileName(filePath);
-    var existingTab = _tabControl.Items.OfType<TabItem>()
-        .FirstOrDefault(tab => tab.Header.ToString() == fileName);
-
-    if (existingTab != null)
     {
-        UpdateTabContent(existingTab, fileContent);
-    }
-    else
-    {
-        var headerTextBlock = new TextBlock
-        {
-            Text = fileName,
-            FontSize = 14,
-        };
+        string fileName = System.IO.Path.GetFileName(filePath);
+        var existingTab = _tabControl.Items.OfType<TabItem>()
+            .FirstOrDefault(tab => tab.Header.ToString() == fileName);
 
-        var stackPanel = new StackPanel
+        if (existingTab != null)
         {
-            Orientation = Orientation.Vertical
-        };
-
-        Control tabContent;
-
-        if (fileContent is Dictionary<string, object> parsedData)
-        {
-            var deserializer = new YamlDotNet.Serialization.SerializerBuilder().Build();
-            var yamlString = deserializer.Serialize(parsedData);
-
-            tabContent = new TextBox
-            {
-                Text = yamlString,
-                AcceptsReturn = true,
-                IsReadOnly = false,
-                TextWrapping = TextWrapping.Wrap
-            };
-        }
-        else if (fileContent is string plainText)
-        {
-            tabContent = new TextBox
-            {
-                Text = plainText,
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap
-            };
+            UpdateTabContent(existingTab, fileContent);
         }
         else
         {
-            throw new InvalidOperationException("Unsupported file type");
+            var headerTextBlock = new TextBlock
+            {
+                Text = fileName,
+                FontSize = 14,
+            };
+
+            var stackPanel = new StackPanel
+            {
+                Orientation = Orientation.Vertical
+            };
+
+            Control tabContent;
+
+            if (fileContent is Dictionary<string, object> parsedData)
+            {
+                var deserializer = new YamlDotNet.Serialization.SerializerBuilder().Build();
+                var yamlString = deserializer.Serialize(parsedData);
+
+                tabContent = new TextBox
+                {
+                    Text = yamlString,
+                    AcceptsReturn = true,
+                    IsReadOnly = false,
+                    TextWrapping = TextWrapping.Wrap
+                };
+            }
+            else if (fileContent is string plainText)
+            {
+                tabContent = new TextBox
+                {
+                    Text = plainText,
+                    AcceptsReturn = true,
+                    TextWrapping = TextWrapping.Wrap
+                };
+            }
+            else
+            {
+                throw new InvalidOperationException("Unsupported file type");
+            }
+
+            // Wrap the content in a ScrollViewer to enable scrolling
+            var scrollViewer = new ScrollViewer
+            {
+                Content = tabContent,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Height = 400, // Set a fixed height for the ScrollViewer
+            };
+
+            // Create buttons
+            var saveButton = new Button { Content = "Save" };
+            var cancelButton = new Button { Content = "Cancel" };
+
+            saveButton.Click += (sender, e) => { SaveFile(filePath, tabContent); };
+            cancelButton.Click += (sender, e) =>
+            {
+                CancelChanges(tabContent, tabContent is TextBox textBox ? textBox.Text : null);
+            };
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+
+            // Add the scroll viewer and buttons to the stack panel
+            stackPanel.Children.Add(scrollViewer);
+            stackPanel.Children.Add(buttonPanel);
+
+            // Create a new tab with the header and the stack panel
+            var newTab = new TabItem
+            {
+                Header = headerTextBlock,
+                Content = stackPanel
+            };
+
+            // Add the new TabItem to your TabControl
+            _tabControl.Items.Add(newTab);
         }
-
-        // Wrap the content in a ScrollViewer to enable scrolling
-        var scrollViewer = new ScrollViewer
-        {
-            Content = tabContent,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Height = 400, // Set a fixed height for the ScrollViewer
-        };
-
-        // Create buttons
-        var saveButton = new Button { Content = "Save" };
-        var cancelButton = new Button { Content = "Cancel" };
-
-        saveButton.Click += (sender, e) => { SaveFile(filePath, tabContent); };
-        cancelButton.Click += (sender, e) =>
-        {
-            CancelChanges(tabContent, tabContent is TextBox textBox ? textBox.Text : null);
-        };
-
-        var buttonPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-        buttonPanel.Children.Add(saveButton);
-        buttonPanel.Children.Add(cancelButton);
-
-        // Add the scroll viewer and buttons to the stack panel
-        stackPanel.Children.Add(scrollViewer);
-        stackPanel.Children.Add(buttonPanel);
-
-        // Create a new tab with the header and the stack panel
-        var newTab = new TabItem
-        {
-            Header = headerTextBlock,
-            Content = stackPanel
-        };
-
-        // Add the new TabItem to your TabControl
-        _tabControl.Items.Add(newTab);
     }
-}
-
 
 
     private void SaveFile(string filePath, Control editor)
