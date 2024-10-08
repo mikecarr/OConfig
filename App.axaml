@@ -3,9 +3,10 @@
              x:Class="AvaloniaApplication6.App"
              xmlns:local="using:AvaloniaApplication6"
              
+             
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
+                     
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
@@ -13,6 +14,7 @@
 
              
     <Application.Styles>
-        <FluentTheme />
+        <!-- <FluentTheme /> -->
+        <SimpleTheme />
     </Application.Styles>
 </Application>

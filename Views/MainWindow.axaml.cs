@@ -6,6 +6,7 @@ using System.Text;
 using Avalonia.Controls;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -95,9 +96,85 @@ public partial class MainWindow : Window
         string username = _appConfig.Username;
         string password = _appConfig.Password;
         string ipAddress = _appConfig.IPAddress;
-
+        
+        // Read the hostname
+        string hostname = await GetHostnameAsync(ipAddress, username, password);
+        
+        // Check if hostname matches the expected pattern
+        if (_appConfig.DeviceType == MainWindowViewModel.DeviceType.Camera && !hostname.StartsWith("openipc-"))
+        {
+            // Show dialog indicating the mismatch
+            await ShowErrorDialogAsync("Target does not match the device type.");
+            return; // Stop processing
+        }
+        
         await ConnectAndReadFilesAsync(username, password, ipAddress);
     
+    }
+
+    private async Task ShowErrorDialogAsync(string message)
+    {
+        var dialog = new Window
+        {
+            Title = "Error",
+            Width = 300,
+            Height = 150,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Topmost = true,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(10),
+                Children =
+                {
+                    new TextBlock { Text = message, Margin = new Thickness(0, 0, 0, 10) },
+                    new Button
+                    {
+                        Content = "OK",
+                        Name = "OK",
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    }
+                }
+            }
+        };
+
+        dialog.WindowState = WindowState.Normal;
+
+        var okButton = (Button)((StackPanel)dialog.Content).Children[1];
+        okButton.Click += (s, e) => dialog.Close();
+
+        // Show the dialog as a modal window
+        await dialog.ShowDialog(this);
+    }
+
+
+
+    
+    private async Task<string> GetHostnameAsync(string ipAddress, string username, string password)
+    {
+        using (var client = new SshClient(ipAddress, username, password))
+        {
+            try
+            {
+                await Task.Run(() => client.Connect());
+                Logger.Instance.Log("SSH Connected to get hostname");
+
+                // Run command to get the hostname
+                var command = await Task.Run(() => client.RunCommand("hostname"));
+                var hostname = command.Result.Trim(); // Remove any whitespace
+
+                return hostname;
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.Log($"Error getting hostname: {ex.Message}");
+                return string.Empty; // Return an empty string in case of an error
+            }
+            finally
+            {
+                client.Disconnect();
+                Logger.Instance.Log("SSH Disconnected");
+            }
+        }
     }
 
     private async Task ConnectAndReadFilesAsync(string username, string password, string ipAddress)
