@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AvaloniaApplication6.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="AvaloniaApplication6.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/openipc.ico"
+        Title="OConfigurator"
+        Width="800"
+        Height="600">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+    
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Top: Tab Control -->
+        <TabControl x:Name="MainTabControl" Grid.Row="0" Grid.ColumnSpan="2">
+            <TabItem Header="Logs" FontSize="14">
+                <ScrollViewer x:Name="LogsScrollViewer" VerticalScrollBarVisibility="Auto">
+                    <TextBox Name="LogsTextBox" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" />
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <!-- Bottom Left: Connection Box -->
+        <StackPanel Grid.Row="2" Grid.Column="0" Margin="10">
+            <TextBlock Text="Connection Info" FontWeight="Bold"/>
+            <TextBlock Text="Username"/>
+            <TextBox Name="UsernameTextBox" Width="200"/>
+            <TextBlock Text="Password"/>
+            <TextBox Name="PasswordTextBox" Width="200" PasswordChar="*"/>
+            <TextBlock Text="IP Address"/>
+            <TextBox Name="IPAddressTextBox" Width="200"/>
+            <Button Name="ConnectButton" Content="Connect" Width="100" Margin="5" Click="OnConnectClick"/>
+        </StackPanel>
+
+        <!-- Bottom Right: Device Type Radio Buttons -->
+        <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Vertical" Margin="10" VerticalAlignment="Top">
+            <TextBlock Text="Device Type" FontWeight="Bold" Margin="0,10,0,5"/>
+            <RadioButton Content="Camera" GroupName="DeviceType" Name="CameraRadioButton"/>
+            <RadioButton Content="Radxa" GroupName="DeviceType" Name="RadxaRadioButton"/>
+            <RadioButton Content="NVR" GroupName="DeviceType" Name="NVRRadioButton"/>
+        </StackPanel>
+
+        <ContentControl Grid.Row="1" Grid.Column="1"/>
+    </Grid>
+</Window>
