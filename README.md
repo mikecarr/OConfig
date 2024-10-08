@@ -8,6 +8,8 @@ Main Window
 ![devtools.png](images/oconfig.png)
 
 ## Debugging
-When app is running, check DevTools via F12 (fn-F12) for VisualTree
+When app is running, check DevTools via F12 (Mac fn-F12) for VisualTree
 ![devtools.png](images/devtools.png)
 
+## Build Icons
+/Users/mcarr/workspace/icons

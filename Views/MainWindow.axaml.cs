@@ -6,9 +6,10 @@ using System.Text;
 using Avalonia.Controls;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Avalonia;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using AvaloniaApplication6.ViewModels;
 using Renci.SshNet; // For handling SSH connections
@@ -19,11 +20,16 @@ namespace AvaloniaApplication6.Views;
 public partial class MainWindow : Window
 {
     private TabControl _tabControl;
-    private AppConfig _appConfig; 
+    private AppConfig _appConfig;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        this.SizeToContent = SizeToContent.Height; // This allows the window to resize based on content
+
+        // Set a fixed height
+        this.Height = 600; // or whatever height is appropriate for your design
         
         this.WindowState = WindowState.Normal; // Ensure the window is normal
         this.Activate(); // Activate the window
@@ -37,9 +43,9 @@ public partial class MainWindow : Window
 
         // Load the application configuration
         _appConfig = AppConfig.Load();
-        PopulateFields(); // Populate fields with loaded config
-        
-        
+
+        // Populate fields with loaded config
+        PopulateFields();
     }
 
     private void PopulateFields()
@@ -58,12 +64,12 @@ public partial class MainWindow : Window
         {
             RadxaRadioButton.IsChecked = true;
         }
-        else if (_appConfig.DeviceType == MainWindowViewModel.DeviceType.None) 
+        else if (_appConfig.DeviceType == MainWindowViewModel.DeviceType.None)
         {
             // Set other device type radio button
         }
     }
-    
+
     // When the Connect button is clicked
     private void OnConnectClick(object? sender, RoutedEventArgs e)
     {
@@ -151,87 +157,100 @@ public partial class MainWindow : Window
         return JsonSerializer.Deserialize<Dictionary<string, object>>(fileContent);
     }
 
-        public void AddFileTab(string filePath, object fileContent)
+    public void AddFileTab(string filePath, object fileContent)
+{
+    string fileName = System.IO.Path.GetFileName(filePath);
+    var existingTab = _tabControl.Items.OfType<TabItem>()
+        .FirstOrDefault(tab => tab.Header.ToString() == fileName);
+
+    if (existingTab != null)
     {
-        // Extract the file name for the tab header
-        string fileName = System.IO.Path.GetFileName(filePath);
-
-        // Check if a tab for this file already exists
-        var existingTab = _tabControl.Items.OfType<TabItem>()
-            .FirstOrDefault(tab => tab.Header.ToString() == fileName);
-
-        if (existingTab != null)
+        UpdateTabContent(existingTab, fileContent);
+    }
+    else
+    {
+        var headerTextBlock = new TextBlock
         {
-            // Update existing tab
-            UpdateTabContent(existingTab, fileContent);
+            Text = fileName,
+            FontSize = 14,
+        };
+
+        var stackPanel = new StackPanel
+        {
+            Orientation = Orientation.Vertical
+        };
+
+        Control tabContent;
+
+        if (fileContent is Dictionary<string, object> parsedData)
+        {
+            var deserializer = new YamlDotNet.Serialization.SerializerBuilder().Build();
+            var yamlString = deserializer.Serialize(parsedData);
+
+            tabContent = new TextBox
+            {
+                Text = yamlString,
+                AcceptsReturn = true,
+                IsReadOnly = false,
+                TextWrapping = TextWrapping.Wrap
+            };
+        }
+        else if (fileContent is string plainText)
+        {
+            tabContent = new TextBox
+            {
+                Text = plainText,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap
+            };
         }
         else
         {
-            // Create new tab header with custom font size
-            var headerTextBlock = new TextBlock
-            {
-                Text = fileName,
-                FontSize = 14, // Set your desired font size here
-                // You can set other properties like FontWeight, Foreground, etc.
-            };
-
-            // Create a StackPanel for the tab content
-            var content = new StackPanel
-            {
-                Orientation = Orientation.Vertical
-            };
-
-            // Create editor for file content
-            Control editor = fileContent switch
-            {
-                Dictionary<string, object> parsedData => CreateYamlOrJsonTreeView(parsedData),
-                string plainText => new TextBox { Text = plainText, AcceptsReturn = true },
-                _ => throw new InvalidOperationException("Unsupported file type")
-            };
-
-            // Add the editor to the content
-            content.Children.Add(editor);
-
-            // Create Save button
-            var saveButton = new Button
-            {
-                Content = "Save",
-                Width = 100,
-                Margin = new Thickness(5)
-            };
-            saveButton.Click += (sender, e) => SaveFile(filePath, editor);
-
-            // Create Cancel button
-            var cancelButton = new Button
-            {
-                Content = "Cancel",
-                Width = 100,
-                Margin = new Thickness(5)
-            };
-            cancelButton.Click += (sender, e) => CancelChanges(editor, fileContent);
-
-            // Create a StackPanel for buttons
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal
-            };
-            buttonPanel.Children.Add(saveButton);
-            buttonPanel.Children.Add(cancelButton);
-
-            // Add the button panel to the content
-            content.Children.Add(buttonPanel);
-
-            // Create the new TabItem
-            var newTab = new TabItem
-            {
-                Header = headerTextBlock, // Use the TextBlock as the header
-                Content = content
-            };
-
-            // Add the new TabItem to your TabControl
-            _tabControl.Items.Add(newTab);
+            throw new InvalidOperationException("Unsupported file type");
         }
+
+        // Wrap the content in a ScrollViewer to enable scrolling
+        var scrollViewer = new ScrollViewer
+        {
+            Content = tabContent,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 400, // Set a fixed height for the ScrollViewer
+        };
+
+        // Create buttons
+        var saveButton = new Button { Content = "Save" };
+        var cancelButton = new Button { Content = "Cancel" };
+
+        saveButton.Click += (sender, e) => { SaveFile(filePath, tabContent); };
+        cancelButton.Click += (sender, e) =>
+        {
+            CancelChanges(tabContent, tabContent is TextBox textBox ? textBox.Text : null);
+        };
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        buttonPanel.Children.Add(saveButton);
+        buttonPanel.Children.Add(cancelButton);
+
+        // Add the scroll viewer and buttons to the stack panel
+        stackPanel.Children.Add(scrollViewer);
+        stackPanel.Children.Add(buttonPanel);
+
+        // Create a new tab with the header and the stack panel
+        var newTab = new TabItem
+        {
+            Header = headerTextBlock,
+            Content = stackPanel
+        };
+
+        // Add the new TabItem to your TabControl
+        _tabControl.Items.Add(newTab);
     }
+}
 
 
 
