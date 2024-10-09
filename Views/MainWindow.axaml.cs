@@ -49,9 +49,9 @@ public partial class MainWindow : Window
         PopulateFields();
     }
 
+    // Populates the text fields and radio buttons with values from the loaded configuration
     private void PopulateFields()
     {
-        // Populate text fields with the saved config values
         UsernameTextBox.Text = _appConfig.Username;
         PasswordTextBox.Text = _appConfig.Password;
         IPAddressTextBox.Text = _appConfig.IPAddress;
@@ -71,7 +71,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // When the Connect button is clicked
+    // Handles the click event for the Connect button
     private async void OnConnectClick(object? sender, RoutedEventArgs e)
     {
         Logger.Instance.Log("Attempting to connect...");
@@ -109,9 +109,9 @@ public partial class MainWindow : Window
         }
         
         await ConnectAndReadFilesAsync(username, password, ipAddress);
-    
     }
 
+    // Displays an error dialog with a specified message
     private async Task ShowErrorDialogAsync(string message)
     {
         var dialog = new Window
@@ -146,9 +146,7 @@ public partial class MainWindow : Window
         await dialog.ShowDialog(this);
     }
 
-
-
-    
+    // Retrieves the hostname from the specified IP address using SSH
     private async Task<string> GetHostnameAsync(string ipAddress, string username, string password)
     {
         using (var client = new SshClient(ipAddress, username, password))
@@ -177,6 +175,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // Connects via SSH and reads specified files based on the selected device type
     private async Task ConnectAndReadFilesAsync(string username, string password, string ipAddress)
     {
         using (var client = new SshClient(ipAddress, username, password))
@@ -244,7 +243,7 @@ public partial class MainWindow : Window
         }
     }
 
-
+    // Connects via SSH and reads specified files based on the selected device type (synchronous version)
     private void ConnectAndReadFiles(string username, string password, string ipAddress)
     {
         using (var client = new SshClient(ipAddress, username, password))
@@ -297,221 +296,35 @@ public partial class MainWindow : Window
         }
     }
 
-
-    // Parse YAML using YamlDotNet
-    private Dictionary<string, object> ParseYaml(string fileContent)
+    // Parses YAML content and returns a dictionary representation
+    private Dictionary<string, object> ParseYaml(string yamlContent)
     {
-        var deserializer = new DeserializerBuilder().Build();
-        return deserializer.Deserialize<Dictionary<string, object>>(fileContent);
+        var deserializer = new Deserializer();
+        return deserializer.Deserialize<Dictionary<string, object>>(yamlContent);
     }
 
-    // Parse JSON using System.Text.Json
-    private Dictionary<string, object> ParseJson(string fileContent)
+    // Parses JSON content and returns a dictionary representation
+    private Dictionary<string, object> ParseJson(string jsonContent)
     {
-        return JsonSerializer.Deserialize<Dictionary<string, object>>(fileContent);
+        return JsonSerializer.Deserialize<Dictionary<string, object>>(jsonContent);
     }
 
-    public void AddFileTab(string filePath, object fileContent)
+    // Adds a new tab to the TabControl with the file's content
+    private void AddFileTab(string filePath, object fileContent)
     {
-        string fileName = System.IO.Path.GetFileName(filePath);
-        var existingTab = _tabControl.Items.OfType<TabItem>()
-            .FirstOrDefault(tab => tab.Header.ToString() == fileName);
-
-        if (existingTab != null)
+        var tabItem = new TabItem
         {
-            UpdateTabContent(existingTab, fileContent);
-        }
-        else
-        {
-            var headerTextBlock = new TextBlock
-            {
-                Text = fileName,
-                FontSize = 14,
-            };
-
-            var stackPanel = new StackPanel
-            {
-                Orientation = Orientation.Vertical
-            };
-
-            Control tabContent;
-
-            if (fileContent is Dictionary<string, object> parsedData)
-            {
-                var deserializer = new YamlDotNet.Serialization.SerializerBuilder().Build();
-                var yamlString = deserializer.Serialize(parsedData);
-
-                tabContent = new TextBox
-                {
-                    Text = yamlString,
-                    AcceptsReturn = true,
-                    IsReadOnly = false,
-                    TextWrapping = TextWrapping.Wrap
-                };
-            }
-            else if (fileContent is string plainText)
-            {
-                tabContent = new TextBox
-                {
-                    Text = plainText,
-                    AcceptsReturn = true,
-                    TextWrapping = TextWrapping.Wrap
-                };
-            }
-            else
-            {
-                throw new InvalidOperationException("Unsupported file type");
-            }
-
-            // Wrap the content in a ScrollViewer to enable scrolling
-            var scrollViewer = new ScrollViewer
-            {
-                Content = tabContent,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Height = 400, // Set a fixed height for the ScrollViewer
-            };
-
-            // Create buttons
-            var saveButton = new Button { Content = "Save" };
-            var cancelButton = new Button { Content = "Cancel" };
-
-            saveButton.Click += (sender, e) => { SaveFile(filePath, tabContent); };
-            cancelButton.Click += (sender, e) =>
-            {
-                CancelChanges(tabContent, tabContent is TextBox textBox ? textBox.Text : null);
-            };
-
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            buttonPanel.Children.Add(saveButton);
-            buttonPanel.Children.Add(cancelButton);
-
-            // Add the scroll viewer and buttons to the stack panel
-            stackPanel.Children.Add(scrollViewer);
-            stackPanel.Children.Add(buttonPanel);
-
-            // Create a new tab with the header and the stack panel
-            var newTab = new TabItem
-            {
-                Header = headerTextBlock,
-                Content = stackPanel
-            };
-
-            // Add the new TabItem to your TabControl
-            _tabControl.Items.Add(newTab);
-        }
+            Header = Path.GetFileName(filePath), // Use the file name as the tab header
+            Content = new TextBlock { Text = fileContent.ToString(), TextWrapping = TextWrapping.Wrap }, // Display the content
+            IsSelected = true // Select the new tab
+        };
+        _tabControl.Items.Add(tabItem);
     }
 
-
-    private void SaveFile(string filePath, Control editor)
+    // Saves the configuration upon closing the application
+    protected override void OnClosing(WindowClosingEventArgs e)
     {
-        string contentToSave = string.Empty;
-
-        // Gather content from the editor
-        if (editor is TextBox textBox)
-        {
-            contentToSave = textBox.Text;
-        }
-        else if (editor is TreeView treeView)
-        {
-            // Implement logic to convert the TreeView content back to YAML/JSON format if necessary
-            // For now, we will just log it as an example
-            Logger.Instance.Log("Saving content from TreeView (implement serialization logic).");
-            // contentToSave = ConvertTreeViewToYamlOrJson(treeView); // Implement this method if needed
-        }
-
-        // Assuming you have username, password, and ipAddress from your connection details
-        string username = UsernameTextBox.Text;
-        string password = PasswordTextBox.Text;
-        string ipAddress = IPAddressTextBox.Text;
-
-        // Send content back to the server using SSH
-        Task.Run(() =>
-        {
-            using (var client = new SshClient(ipAddress, username, password))
-            {
-                try
-                {
-                    client.Connect();
-                    Logger.Instance.Log("SSH Connected");
-
-                    // Use SFTP or command to write back the file
-                    var sftp = new SftpClient(ipAddress, username, password);
-                    sftp.Connect();
-
-                    using (var memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(contentToSave)))
-                    {
-                        // Upload the file to the specified path
-                        sftp.UploadFile(memoryStream, filePath);
-                    }
-
-                    Logger.Instance.Log("File saved successfully");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Instance.Log($"Error saving file: {ex.Message}");
-                }
-                finally
-                {
-                    client.Disconnect();
-                    Logger.Instance.Log("SSH Disconnected");
-                }
-            }
-        });
-    }
-
-    private void CancelChanges(Control editor, object originalContent)
-    {
-        if (editor is TextBox textBox)
-        {
-            textBox.Text = originalContent.ToString(); // Revert to original text
-        }
-        else if (editor is TreeView treeView)
-        {
-            // Implement logic to revert the TreeView content if necessary
-            Logger.Instance.Log("Canceling changes for TreeView (implement revert logic).");
-        }
-    }
-
-    private TreeView CreateYamlOrJsonTreeView(Dictionary<string, object> parsedData)
-    {
-        var treeView = new TreeView();
-        var treeBuilder = new YamlTreeBuilder(treeView); // Reusing the builder for YAML and JSON
-        treeBuilder.BuildTree(parsedData);
-        return treeView;
-    }
-
-    private void UpdateTabContent(TabItem existingTab, object fileContent)
-    {
-        if (fileContent is Dictionary<string, object> parsedData)
-        {
-            // Update the existing TreeView
-            if (existingTab.Content is TreeView treeView)
-            {
-                var treeBuilder = new YamlTreeBuilder(treeView);
-                treeBuilder.BuildTree(parsedData); // Rebuild the tree with updated data
-            }
-            else
-            {
-                existingTab.Content = CreateYamlOrJsonTreeView(parsedData); // Replace with new TreeView
-            }
-        }
-        else if (fileContent is string plainText)
-        {
-            // Update the existing TextBox content
-            if (existingTab.Content is TextBox textBox)
-            {
-                textBox.Text = plainText; // Update the existing TextBox content
-            }
-            else
-            {
-                // Replace the content with a new TextBox
-                existingTab.Content = new TextBox { Text = plainText, AcceptsReturn = true };
-            }
-        }
+        _appConfig.Save(); // Save current configuration
+        base.OnClosing(e);
     }
 }
